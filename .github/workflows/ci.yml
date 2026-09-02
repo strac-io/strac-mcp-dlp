@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest -q
+
+  manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: server.json version matches pyproject
+        run: |
+          python - <<'PY'
+          import json, re, sys, pathlib
+          server = json.loads(pathlib.Path("server.json").read_text())
+          pyproject = pathlib.Path("pyproject.toml").read_text()
+          project_version = re.search(r'^version = "(.+?)"', pyproject, re.M).group(1)
+          versions = {server["version"]} | {p["version"] for p in server["packages"]}
+          if versions != {project_version}:
+              sys.exit(
+                  f"version mismatch: pyproject={project_version} server.json={sorted(versions)}"
+              )
+          name = server["name"]
+          if f"mcp-name: {name}" not in pathlib.Path("README.md").read_text():
+              sys.exit(f"README.md must contain 'mcp-name: {name}' for registry validation")
+          print(f"server.json and pyproject.toml agree on {project_version}")
+          PY

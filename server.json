@@ -1,0 +1,46 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.strac-io/strac-mcp-dlp",
+  "title": "Strac MCP DLP",
+  "description": "Detect and redact PII, PHI, PCI and secrets in text and files before an AI agent sees them.",
+  "version": "0.1.0",
+  "websiteUrl": "https://www.strac.io/mcp-integrations",
+  "repository": {
+    "url": "https://github.com/strac-io/strac-mcp-dlp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "strac-mcp-dlp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "STRAC_API_KEY",
+          "description": "Strac API key. Get one at https://www.strac.io/mcp-integrations. Keys are prefixed sk_live_ (production) or sk_test_ (sandbox).",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "STRAC_API_BASE",
+          "description": "Override the Strac API base URL. Defaults to https://api.live.tokenidvault.com for sk_live_ keys and https://api.test.tokenidvault.com for sk_test_ keys.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "STRAC_API_TIMEOUT",
+          "description": "Request timeout in seconds. Defaults to 60.",
+          "isRequired": false,
+          "isSecret": false,
+          "default": "60",
+          "format": "number"
+        }
+      ]
+    }
+  ]
+}

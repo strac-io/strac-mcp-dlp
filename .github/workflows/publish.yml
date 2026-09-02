@@ -1,0 +1,69 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - run: python -m build
+      # Trusted publishing — no token needed once this repo and workflow are
+      # registered as a publisher at
+      # https://pypi.org/manage/project/strac-mcp-dlp/settings/publishing/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  registry:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the release version
+        id: version
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, pathlib
+          print("value=" + json.loads(pathlib.Path("server.json").read_text())["version"])
+          PY
+
+      - name: Install mcp-publisher
+        run: |
+          curl -sL "https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz" \
+            | tar xz mcp-publisher
+          sudo install -m 0755 mcp-publisher /usr/local/bin/mcp-publisher
+
+      - name: Wait for PyPI to serve the new version
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -sfo /dev/null "https://pypi.org/pypi/strac-mcp-dlp/$VERSION/json"; then
+              echo "strac-mcp-dlp $VERSION is live on PyPI"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "strac-mcp-dlp $VERSION did not appear on PyPI within 5 minutes" >&2
+          exit 1
+
+      # The registry authorises the io.github.strac-io/* namespace from this
+      # workflow's OIDC token, so no stored credential is needed.
+      - name: Publish to the Official MCP Registry
+        run: |
+          mcp-publisher login github-oidc
+          mcp-publisher publish

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "strac-dlp": {
+      "command": "uvx",
+      "args": ["strac-mcp-dlp"],
+      "env": {
+        "STRAC_API_KEY": "sk_live_your_key_here"
+      }
+    }
+  }
+}

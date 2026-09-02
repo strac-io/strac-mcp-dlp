@@ -1,0 +1,73 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "strac-mcp-dlp"
+version = "0.1.0"
+description = "MCP server for Strac DLP — detect and redact PII, PHI, PCI and secrets before an AI agent sees them."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Strac", email = "hello@strac.io" }]
+keywords = [
+    "mcp",
+    "model-context-protocol",
+    "dlp",
+    "pii",
+    "phi",
+    "pci",
+    "redaction",
+    "data-loss-prevention",
+    "ai-security",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+]
+dependencies = [
+    "mcp>=2.1.1",
+    "httpx>=0.27",
+]
+
+[project.urls]
+Homepage = "https://www.strac.io/mcp-integrations"
+Documentation = "https://docs.strac.io"
+Repository = "https://github.com/strac-io/strac-mcp-dlp"
+Issues = "https://github.com/strac-io/strac-mcp-dlp/issues"
+
+[project.scripts]
+strac-mcp-dlp = "strac_mcp_dlp.server:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+    "ruff>=0.6",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/strac_mcp_dlp"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "README.md", "LICENSE", "server.json"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
