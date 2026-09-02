@@ -28,6 +28,16 @@ Filtering that data *after* the model has seen it is too late. This server puts 
 
 ---
 
+## This server is one door into Strac
+
+Redacting a string you hand it is the smallest thing Strac does. The product is coverage: connect Strac to the SaaS and cloud apps where your sensitive data already lives, and it discovers, classifies, redacts and remediates it *there* — continuously, under your policies, with an audit trail — rather than waiting for someone to paste it into a prompt.
+
+Slack, Google Workspace, Microsoft 365, Salesforce, Zendesk, Box, Dropbox, Jira, Confluence, GitHub, OneDrive, SharePoint, AWS, Azure, GCP, browsers and endpoints — 50+ integrations, agentless, no code to write. Including a full MCP DLP gateway across those connectors, so the data an agent pulls through *any* MCP server is governed the same way.
+
+**[strac.io/mcp-integrations](https://www.strac.io/mcp-integrations)** is that product. This repo is its developer-facing sliver: the same detection engine, reachable from any MCP client, for when you want to sanitise a string or a file yourself.
+
+---
+
 ## 60-second quickstart
 
 **1. Install**
@@ -38,7 +48,9 @@ pip install strac-mcp-dlp
 
 **2. Get an API key**
 
-Grab one at [strac.io/mcp-integrations](https://www.strac.io/mcp-integrations). Keys are prefixed `sk_live_` (production) or `sk_test_` (sandbox); the server picks the right endpoint automatically.
+Strac is not self-serve yet — keys are issued during onboarding. [Book a demo](https://www.strac.io/book-a-demo), or email [hello@strac.io](mailto:hello@strac.io) if you just want a sandbox key to try this server.
+
+Keys are prefixed `sk_live_` (production) or `sk_test_` (sandbox); the server picks the matching endpoint automatically.
 
 **3. Add it to your MCP client**
 
@@ -127,9 +139,26 @@ Returning the matched text alongside the redacted text would hand the model exac
 
 ## What gets detected
 
-The `/detect` and `/redact` endpoints classify: `NAME`, `ADDRESS`, `EMAIL`, `DATE_OF_BIRTH`, `GENDER`, `TAX_ID_NUMBER` (SSN, ITIN, EIN, PAN, numéro fiscal), `CREDIT_DEBIT_NUMBER`, `DRIVER_LICENSE_NUMBER`, `PASSPORT_NUMBER`, `NATIONAL_ID_NUMBER`, `AADHAAR_NUMBER`, `ISSUE_DATE` and `EXPIRY_DATE`.
+Strac ships **191 built-in data elements across 10 categories**, plus custom elements you define with regex or your own trained model:
 
-The wider Strac platform classifies a much broader set across its SaaS and cloud connectors — bank and routing numbers, CVV, medical and health identifiers, source code, and credentials such as AWS keys, GitHub and GitLab tokens, Slack tokens, GCP and Azure secrets, and database connection strings. See [docs.strac.io](https://docs.strac.io) for the full list.
+| Category | Elements | Examples |
+| --- | --- | --- |
+| Identification | 126 | SSN/TIN, passports, driver licences and national IDs across ~60 countries — Aadhaar, PAN, PESEL, BSN, Fiscal Code, IRD — plus NPI and DEA registration numbers |
+| Secrets | 30 | AWS access and secret keys, GitHub and GitLab tokens, Slack tokens, GCP credentials, Azure storage and service-principal keys, private keys, JDBC and MongoDB connection strings, seed phrases |
+| Financial Account | 10 | Card number and tail, CVV, expiry, bank account and routing numbers, IBAN, SWIFT |
+| Advertisement Identifiers | 7 | Apple IDFA and IDFV, Google GAID, Roku, Amazon Fire OS, Huawei OAID |
+| Contact | 6 | Name, address, email, phone, date of birth, age |
+| Device Tracking | 5 | IP address, MAC address, IMEI, webpage URL, date/time |
+| Asset | 3 | Source code, VIN, vehicle licence plate |
+| Document Properties | 2 | Invoice, password-protected document |
+| Content Moderation | 1 | Offensive content |
+| Intellectual Property | 1 | Chemical/molecular structure |
+
+Every element named individually: **[Strac Catalog of Sensitive Data Elements](https://www.strac.io/blog/strac-catalog-of-sensitive-data-elements)**.
+
+Detection runs on text and, via OCR, on PDFs, JPEGs, PNGs, DOCX, XLSX, screenshots and `.msg` email files — which is what `detect_file` and `redact_file` reach.
+
+One caveat worth setting expectations on: the `type` values *these MCP tools* return come from Strac's text and document endpoints, and the [API reference](https://docs.strac.io) documents that set as `NAME`, `ADDRESS`, `EMAIL`, `DATE_OF_BIRTH`, `GENDER`, `TAX_ID_NUMBER`, `CREDIT_DEBIT_NUMBER`, `DRIVER_LICENSE_NUMBER`, `PASSPORT_NUMBER`, `NATIONAL_ID_NUMBER`, `AADHAAR_NUMBER`, `ISSUE_DATE` and `EXPIRY_DATE`. The full catalog above is what runs across your connected apps, where policies, remediation and audit live.
 
 ---
 
@@ -151,7 +180,7 @@ The server speaks **stdio** by default. `strac-mcp-dlp --transport streamable-ht
 
 Your MCP client spawns this server locally; it forwards each tool call to the Strac API over HTTPS with your `X-Api-Key`, and returns the result. Nothing is classified or redacted on your machine, and this repository contains no detection models.
 
-Your data element definitions, custom policies, remediation rules, audit trail, and the full MCP DLP gateway across your SaaS and cloud connectors live in your Strac account: **[strac.io/mcp-integrations](https://www.strac.io/mcp-integrations)**.
+Your data element definitions, custom policies, remediation rules and audit trail live in your Strac account, not in this repo — which is why the same key that powers these five tools also governs every connected app.
 
 ```
 MCP client  ──stdio──▶  strac-mcp-dlp  ──HTTPS──▶  Strac DLP API
@@ -189,8 +218,10 @@ STRAC_API_KEY=sk_test_… npx @modelcontextprotocol/inspector strac-mcp-dlp
 ## Links
 
 - [Strac MCP integrations](https://www.strac.io/mcp-integrations) — the full MCP DLP gateway, connectors, policies and audit
+- [Strac catalog of sensitive data elements](https://www.strac.io/blog/strac-catalog-of-sensitive-data-elements) — every data element, named
 - [Strac API reference](https://docs.strac.io)
 - [MCP DLP: protecting data across Model Context Protocol](https://www.strac.io/blog/mcp-dlp)
+- [Strac integrations](https://www.strac.io/integrations) — the full SaaS and cloud connector list
 
 ## Security
 
