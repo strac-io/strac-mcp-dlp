@@ -2,6 +2,8 @@
 
 An open-source [Model Context Protocol](https://modelcontextprotocol.io) server that gives any AI agent — Claude, Cursor, VS Code, your own — a way to **find and strip sensitive data before it reaches the model.**
 
+[![Claude, OpenAI, Gemini and Copilot connecting through Strac to Slack, Google Workspace, Microsoft 365, Jira, GitHub, Salesforce, Box, Dropbox and more](docs/images/strac-mcp-hero.png)](https://www.strac.io/mcp-integrations)
+
 Point your agent at it, and `redact_text` turns
 
 ```
@@ -36,6 +38,10 @@ Slack, Google Workspace, Microsoft 365, Salesforce, Zendesk, Box, Dropbox, Jira,
 
 **[strac.io/mcp-integrations](https://www.strac.io/mcp-integrations)** is that product. This repo is its developer-facing sliver: the same detection engine, reachable from any MCP client, for when you want to sanitise a string or a file yourself.
 
+[![Strac MCP risk console showing every LLM tool invocation across connected platforms, with PII events flagged for review](docs/images/strac-mcp-console.png)](https://www.strac.io/mcp-integrations)
+
+*Every MCP invocation your agents make — tools called, files read, the identity behind the prompt — captured and inspected.*
+
 ---
 
 ## 60-second quickstart
@@ -46,9 +52,9 @@ Slack, Google Workspace, Microsoft 365, Salesforce, Zendesk, Box, Dropbox, Jira,
 pip install strac-mcp-dlp
 ```
 
-**2. Get an API key**
+**2. Request an API key**
 
-Strac is not self-serve yet — keys are issued during onboarding. [Book a demo](https://www.strac.io/book-a-demo), or email [hello@strac.io](mailto:hello@strac.io) if you just want a sandbox key to try this server.
+[Request a key](https://www.strac.io/book-a-demo), or email [hello@strac.io](mailto:hello@strac.io).
 
 Keys are prefixed `sk_live_` (production) or `sk_test_` (sandbox); the server picks the matching endpoint automatically.
 
@@ -170,7 +176,7 @@ One caveat worth setting expectations on: the `type` values *these MCP tools* re
 | `STRAC_API_BASE` | no | `https://api.live.tokenidvault.com` for `sk_live_` keys, `https://api.test.tokenidvault.com` for `sk_test_` keys |
 | `STRAC_API_TIMEOUT` | no | `60` seconds |
 
-Without a key, every tool returns: `Set STRAC_API_KEY — get one at https://www.strac.io/mcp-integrations`.
+Without a key, every tool returns: `Set STRAC_API_KEY — request one at https://www.strac.io/mcp-integrations`.
 
 The server speaks **stdio** by default. `strac-mcp-dlp --transport streamable-http` serves HTTP instead.
 

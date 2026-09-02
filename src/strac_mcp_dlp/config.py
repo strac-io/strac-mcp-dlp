@@ -10,7 +10,7 @@ from .errors import StracConfigError
 LIVE_API_BASE = "https://api.live.tokenidvault.com"
 TEST_API_BASE = "https://api.test.tokenidvault.com"
 
-MISSING_KEY_MESSAGE = "Set STRAC_API_KEY — get one at https://www.strac.io/mcp-integrations"
+MISSING_KEY_MESSAGE = "Set STRAC_API_KEY — request one at https://www.strac.io/mcp-integrations"
 
 DEFAULT_TIMEOUT_SECONDS = 60.0
 

@@ -228,7 +228,7 @@ async def test_missing_key_error_is_actionable(monkeypatch):
     server_module.reset_client()
     with pytest.raises(
         StracConfigError,
-        match=r"Set STRAC_API_KEY — get one at https://www\.strac\.io/mcp-integrations",
+        match=r"Set STRAC_API_KEY — request one at https://www\.strac\.io/mcp-integrations",
     ):
         await redact_text("SSN 123-45-6789")
 

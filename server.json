@@ -20,7 +20,7 @@
       "environmentVariables": [
         {
           "name": "STRAC_API_KEY",
-          "description": "Strac API key. Get one at https://www.strac.io/mcp-integrations. Keys are prefixed sk_live_ (production) or sk_test_ (sandbox).",
+          "description": "Strac API key. Request one at https://www.strac.io/mcp-integrations. Keys are prefixed sk_live_ (production) or sk_test_ (sandbox).",
           "isRequired": true,
           "isSecret": true,
           "format": "string"
