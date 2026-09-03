@@ -107,13 +107,36 @@ See [`examples/`](examples/) for ready-to-copy config files.
 
 ## Tools
 
-| Tool | What it does | Example |
-| --- | --- | --- |
-| `redact_text` | Redacts PII/PHI/PCI out of a block of text and returns the sanitised string plus what was found. | `redact_text(text="SSN 123-45-6789")` → `"SSN [REDACTED]"` |
-| `detect_sensitive_data` | Scans text and reports which sensitive data types are present, without changing it. | `detect_sensitive_data(text="call me at jane@acme.com")` → `EMAIL` |
-| `detect_file` | Scans a local file — image, PDF, scan or text — using Strac's OCR and classifiers. | `detect_file(path="./w2.pdf")` → `TAX_ID_NUMBER, NAME, ADDRESS` |
-| `redact_file` | Writes a redacted copy of a local file to disk. The original is never modified, and an existing destination is never replaced unless you pass `overwrite`. | `redact_file(path="./w2.pdf")` → `./w2.redacted.pdf` |
-| `detokenize` | Resolves Strac vault tokens (`tkn_…`) back to their original values, for authorised callers. | `detokenize(token_ids=["tkn_abc"])` → `"111-22-3333"` |
+- **redact_text** — Redact PII, PHI, PCI and secrets out of a block of text, returning the sanitised string plus what was found. Call it before putting untrusted or user-supplied text into a prompt, a log line, a ticket or any downstream system.
+  - Inputs:
+    - `text` (string): the text to redact
+    - `redact_field_mode` (string, optional): `REDACTED` (default), `BLANK`, `MASK_SEVEN_X` or `TOKEN_LINK_PLAINTEXT`
+    - `include_matched_text` (boolean, optional): also return the raw sensitive values. Off by default
+  - `redact_text(text="SSN 123-45-6789")` → `"SSN [REDACTED]"`
+
+- **detect_sensitive_data** — Report which sensitive data types are present in text, without changing it. Use it to decide whether text is safe to send onward.
+  - Inputs:
+    - `text` (string): the text to scan
+    - `include_matched_text` (boolean, optional): also return the raw values. Off by default
+  - `detect_sensitive_data(text="call me at jane@acme.com")` → `EMAIL`
+
+- **detect_file** — Scan a local file — image, PDF, scan, config or source — using Strac's OCR and classifiers. The file is never modified.
+  - Inputs:
+    - `path` (string): path to the file to scan
+    - `include_matched_text` (boolean, optional): also return the raw values. Off by default
+  - `detect_file(path="./w2.pdf")` → `TAX_ID_NUMBER, NAME, ADDRESS`
+
+- **redact_file** — Write a redacted copy of a local file to disk. The original is never modified, and an existing destination is never replaced unless you ask.
+  - Inputs:
+    - `path` (string): path to the file to redact
+    - `output_path` (string, optional): where to write the copy. Defaults to a `.redacted` suffix beside the original. Pointing it at the source is refused
+    - `overwrite` (boolean, optional): allow replacing an existing destination. Off by default
+  - `redact_file(path="./w2.pdf")` → `./w2.redacted.pdf`
+
+- **detokenize** — Resolve Strac vault tokens (`tkn_…`) back to their original values, for authorised callers. Up to 10 per call; requires an IP-allowlisted server-to-server key in live mode.
+  - Inputs:
+    - `token_ids` (string[]): the token identifiers to resolve
+  - `detokenize(token_ids=["tkn_abc"])` → `"111-22-3333"`
 
 ### Redaction styles
 
@@ -203,7 +226,8 @@ Limits inherited from the API: 4 MB for inline content, 10 MB for document uploa
 ```bash
 git clone https://github.com/strac-io/strac-mcp-dlp
 cd strac-mcp-dlp
-python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+python3 -m venv .venv
+.venv/bin/pip install -e ".[dev]"
 .venv/bin/python -m pytest
 ```
 
