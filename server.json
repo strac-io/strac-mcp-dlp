@@ -3,7 +3,7 @@
   "name": "io.github.strac-io/strac-mcp-dlp",
   "title": "Strac MCP DLP",
   "description": "Detect and redact PII, PHI, PCI and secrets in text and files before an AI agent sees them.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "websiteUrl": "https://www.strac.io/mcp-integrations",
   "repository": {
     "url": "https://github.com/strac-io/strac-mcp-dlp",
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "strac-mcp-dlp",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "transport": {
         "type": "stdio"
       },
@@ -40,6 +40,15 @@
           "default": "60",
           "format": "number"
         }
+      ]
+    }
+  ],
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/strac-io/strac-mcp-dlp/v0.1.1/docs/images/strac-icon.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "512x512"
       ]
     }
   ]

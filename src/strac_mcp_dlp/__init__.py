@@ -5,6 +5,6 @@ All detection and redaction happens in the Strac API; this package only speaks
 MCP on one side and HTTPS to Strac on the other.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = ["__version__"]

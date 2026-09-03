@@ -14,7 +14,7 @@ from typing import Any, Literal
 from mcp.server.mcpserver import MCPServer
 
 from . import __version__
-from .client import MAX_INLINE_CONTENT_BYTES, StracClient
+from .client import MAX_INLINE_CONTENT_BYTES, MAX_UPLOAD_BYTES, StracClient
 from .config import Config
 from .errors import StracError
 
@@ -112,6 +112,14 @@ def _resolve_file(path: str) -> tuple[Path, bytes, str]:
         raise StracError(f"No such file: {resolved}")
     if not resolved.is_file():
         raise StracError(f"Not a file: {resolved}")
+    # stat() before read_bytes(): reading first would pull an oversized file
+    # entirely into memory only to reject it a moment later.
+    size = resolved.stat().st_size
+    if size > MAX_UPLOAD_BYTES:
+        raise StracError(
+            f"{resolved.name} is {size} bytes; Strac accepts at most {MAX_UPLOAD_BYTES} "
+            f"bytes ({MAX_UPLOAD_BYTES // (1024 * 1024)} MB). Nothing was read."
+        )
     media_type = mimetypes.guess_type(resolved.name)[0] or "application/octet-stream"
     return resolved, resolved.read_bytes(), media_type
 
@@ -430,6 +438,11 @@ async def detect_file(
     else:
         uploaded = await client.upload_document(content, resolved.name, upload_media_type)
         stored_document_id = uploaded.get("id")
+        if not stored_document_id:
+            raise StracError(
+                f"Strac did not return a document id for {resolved.name}, so it cannot "
+                f"be scanned: {uploaded}"
+            )
         payload = await client.detect_document(stored_document_id, document_type)
 
     result = _parse_detect_response(

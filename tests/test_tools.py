@@ -642,3 +642,38 @@ async def test_bad_destination_is_rejected_before_anything_is_uploaded(tmp_path)
         await redact_file(str(target), output_path=str(target))
 
     assert not upload.called, "must fail before uploading to the vault"
+
+
+async def test_oversized_file_is_rejected_without_being_read(tmp_path, monkeypatch):
+    """An oversized file must not be pulled into memory just to be rejected."""
+    from strac_mcp_dlp import server as server_module
+
+    target = tmp_path / "huge.bin"
+    target.write_bytes(b"x" * 1024)
+    monkeypatch.setattr(server_module, "MAX_UPLOAD_BYTES", 100)
+
+    read_calls = []
+    original = server_module.Path.read_bytes
+
+    def spy(self, *a, **kw):
+        read_calls.append(self)
+        return original(self, *a, **kw)
+
+    monkeypatch.setattr(server_module.Path, "read_bytes", spy)
+
+    with pytest.raises(StracError, match="Nothing was read"):
+        await detect_file(str(target))
+    assert read_calls == [], "the file must not be read before the size check"
+
+
+@respx.mock
+async def test_detect_file_errors_when_upload_returns_no_id(tmp_path, monkeypatch):
+    from strac_mcp_dlp import server as server_module
+
+    target = tmp_path / "big.txt"
+    target.write_text("SSN 123-45-6789")
+    monkeypatch.setattr(server_module, "MAX_INLINE_CONTENT_BYTES", 4)  # force the upload path
+    respx.post(DOCUMENTS_URL).mock(return_value=httpx.Response(200, json={"size": 15}))
+
+    with pytest.raises(StracError, match="did not return a document id"):
+        await detect_file(str(target))

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "strac-mcp-dlp"
-version = "0.1.0"
+version = "0.1.1"
 description = "MCP server for Strac DLP — detect and redact PII, PHI, PCI and secrets before an AI agent sees them."
 readme = "README.md"
 requires-python = ">=3.10"
