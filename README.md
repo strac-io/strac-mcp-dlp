@@ -34,7 +34,9 @@ Filtering that data *after* the model has seen it is too late. This server puts 
 
 Redacting a string you hand it is the smallest thing Strac does. The product is coverage: connect Strac to the SaaS and cloud apps where your sensitive data already lives, and it discovers, classifies, redacts and remediates it *there* — continuously, under your policies, with an audit trail — rather than waiting for someone to paste it into a prompt.
 
-Slack, Google Workspace, Microsoft 365, Salesforce, Zendesk, Box, Dropbox, Jira, Confluence, GitHub, OneDrive, SharePoint, AWS, Azure, GCP, browsers and endpoints — 50+ integrations, agentless, no code to write. Including a full MCP DLP gateway across those connectors, so the data an agent pulls through *any* MCP server is governed the same way.
+Slack, Google Workspace, Microsoft 365, Salesforce, Zendesk, Box, Dropbox, Jira, Confluence, GitHub, Notion, OneDrive, SharePoint, Snowflake, Databricks, BigQuery, Postgres, MongoDB, AWS, Azure, GCP, browsers and endpoints — 60+ integrations, agentless, no code to write.
+
+That matters most when those systems are reached over MCP. When an agent — Claude Code, Claude Desktop, Cursor, GitHub Copilot, OpenAI Codex — pulls a Salesforce record or a Drive file through an MCP connector, Strac redacts the sensitive data **inline, before the agent receives it**. That is the difference between asking an agent to redact and enforcing it whether or not it asks.
 
 **[strac.io/mcp-integrations](https://www.strac.io/mcp-integrations)** is that product. This repo is its developer-facing sliver: the same detection engine, reachable from any MCP client, for when you want to sanitise a string or a file yourself.
 
@@ -242,6 +244,42 @@ Or point the [MCP Inspector](https://github.com/modelcontextprotocol/inspector) 
 ```bash
 STRAC_API_KEY=sk_test_… npx @modelcontextprotocol/inspector strac-mcp-dlp
 ```
+
+---
+
+## FAQ
+
+### Do I need a Strac account?
+
+Yes. This is a thin client over the Strac DLP API and every call is authenticated — there is no anonymous mode. Request a key at [strac.io/mcp-integrations](https://www.strac.io/mcp-integrations) or email [hello@strac.io](mailto:hello@strac.io).
+
+### Does my data stay on my machine?
+
+No. Text and files you pass to these tools are sent to the Strac API over HTTPS for classification. Nothing is classified locally — this repository contains no detection models, no classifier and no vault. `detect_file` sends files under 4 MB inline without storing them; larger files, and anything passed to `redact_file`, are uploaded to your Strac document vault.
+
+### Which MCP clients does it work with?
+
+Any client that speaks stdio — Claude Desktop, Claude Code, Cursor, VS Code and others. `--transport streamable-http` is available if you need to run it as a service rather than a subprocess.
+
+### Does it detect secrets, or only PII?
+
+Both. Alongside personal, health and payment data, Strac classifies AWS access and secret keys, GitHub and GitLab tokens, Slack tokens, GCP credentials, Azure storage and service-principal keys, private keys, and JDBC and MongoDB connection strings. See [the full catalog](https://www.strac.io/blog/strac-catalog-of-sensitive-data-elements).
+
+### Why doesn't `redact_text` return the values it found?
+
+Because handing them back would undo the redaction. If the tool returned `"123-45-6789"` in its detections alongside the redacted string, the model would end up with exactly the data you just removed. You get types and positions by default; pass `include_matched_text=true` when a caller genuinely needs the raw values.
+
+### Will `redact_file` modify my original?
+
+No. It writes a copy, refuses an `output_path` that resolves to the source file (including via symlink), and will not replace an existing file unless you pass `overwrite=true`.
+
+### What happens if the Strac API returns something unexpected?
+
+The tool errors. It never reports a clean scan it could not verify — a malformed or unparseable response raises rather than returning "no sensitive data found", because a silent false negative is the one failure a DLP tool cannot have.
+
+### How is this different from the Strac platform?
+
+This repo is on-demand tooling your agent chooses to call. The platform sits across your SaaS, cloud and database connectors and enforces policy whether or not the agent asks — redacting inline before the agent receives the data, with remediation and an audit trail. See [strac.io/mcp-integrations](https://www.strac.io/mcp-integrations).
 
 ---
 
