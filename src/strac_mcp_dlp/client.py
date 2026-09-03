@@ -28,6 +28,9 @@ MAX_INLINE_CONTENT_BYTES = 4 * 1024 * 1024  # /detect document_content
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # POST /documents
 MAX_DETOKENIZE_TOKENS = 10  # POST /tokens-detokenize/batch
 
+# Keys that mark a failure in an otherwise-2xx JSON body.
+ERROR_BODY_KEYS = ("exceptionType", "error_code", "errorCode")
+
 
 def to_data_url(content: bytes, media_type: str) -> str:
     """Encode bytes as an RFC 2397 data URL, the shape `/detect` expects."""
@@ -96,13 +99,28 @@ class StracClient:
             f"{hint} Response: {detail or '<empty>'}"
         )
 
+    def _raise_for_error_body(self, body: dict[str, Any], path: str) -> None:
+        """The API has been observed returning HTTP 200 with an error body, e.g.
+        {"exceptionType": "InternalServerError"}. Treating that as success would let a
+        failed scan surface as a clean one, so these markers are checked explicitly.
+        """
+        for key in ERROR_BODY_KEYS:
+            if key in body:
+                raise StracAPIError(
+                    f"Strac API reported {key}={body[key]!r} for {path} despite a success "
+                    f"status code. Treating this as a failed request, not an empty result."
+                )
+
     async def _json_post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         response = await self._request("POST", path, json=payload)
         try:
             body = response.json()
         except ValueError as exc:
             raise StracAPIError(f"Strac API returned a non-JSON response for POST {path}.") from exc
-        return body if isinstance(body, dict) else {"result": body}
+        if not isinstance(body, dict):
+            return {"result": body}
+        self._raise_for_error_body(body, f"POST {path}")
+        return body
 
     # --- Endpoint wrappers -------------------------------------------------
 
@@ -158,7 +176,10 @@ class StracClient:
             DOCUMENTS_PATH,
             files={"document": (filename, content, media_type)},
         )
-        return response.json()
+        body = response.json()
+        if isinstance(body, dict):
+            self._raise_for_error_body(body, f"POST {DOCUMENTS_PATH}")
+        return body
 
     async def redact_document(self, document_id: str, document_type: str) -> dict[str, Any]:
         """POST /redact (redactDocument) — redacts a document already in the vault."""

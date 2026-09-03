@@ -21,23 +21,46 @@ DOCUMENTS_URL = f"{TEST_API_BASE}/documents"
 
 SSN_TEXT = "Please onboard the user with SSN 123-45-6789"
 
+# Shapes below are what the live sandbox API actually returns, captured with a real
+# sk_test_ key. They differ from the published OpenAPI spec: /redact uses snake_case
+# and repeats each match with a zero span, /detect returns a mapping plus containsPii
+# and omits the detections key entirely when nothing is found.
 REDACT_RESPONSE = {
-    "redactedContent": "Please onboard the user with SSN [REDACTED]",
-    "detectedEntities": [
-        {
-            "type": "TAX_ID_NUMBER",
-            "text": "123-45-6789",
-            "begin_index": 33,
-            "end_index": 44,
-        }
+    "redacted_content": "Please onboard the user with SSN [REDACTED]",
+    "detected_entities": [
+        # The API returns each match twice; this zero-span copy is the duplicate.
+        {"type": "TAX_ID_NUMBER", "text": "123-45-6789", "begin_index": 0, "end_index": 0},
+        {"type": "TAX_ID_NUMBER", "text": "123-45-6789", "begin_index": 33, "end_index": 44},
     ],
 }
 
-DETECT_RESPONSE = {
+# The shape the OpenAPI spec documents. Accepted too, so the package keeps working
+# if the API is ever brought in line with its docs.
+REDACT_RESPONSE_AS_DOCUMENTED = {
+    "redactedContent": "Please onboard the user with SSN [REDACTED]",
     "detectedEntities": [
-        {"type": "TAX_ID_NUMBER", "text": "123-45-6789"},
-        {"type": "EMAIL", "text": "jane@example.com"},
-    ]
+        {"type": "TAX_ID_NUMBER", "text": "123-45-6789", "begin_index": 33, "end_index": 44},
+    ],
+}
+
+REDACT_CLEAN_RESPONSE = {"redacted_content": "nothing to see here"}
+
+DETECT_RESPONSE = {
+    "containsPii": True,
+    "piiElementTypes": ["CREDIT_DEBIT_NUMBER", "SSN"],
+    "detectedEntities": {
+        "SOCIAL_SECURITY_NUMBER": ["123-45-6789"],
+        "EMAIL": ["jane@example.com"],
+    },
+    "shouldRedact": True,
+    "status": "completed",
+}
+
+DETECT_CLEAN_RESPONSE = {
+    "piiElementTypes": [],
+    "containsPii": False,
+    "shouldRedact": False,
+    "status": "completed",
 }
 
 
@@ -106,13 +129,13 @@ async def test_detect_sensitive_data_sends_text_as_data_url():
     assert decoded == SSN_TEXT
 
     assert result["has_sensitive_data"] is True
-    assert result["data_element_types"] == ["EMAIL", "TAX_ID_NUMBER"]
+    assert result["data_element_types"] == ["EMAIL", "SOCIAL_SECURITY_NUMBER"]
     assert "123-45-6789" not in json.dumps(result)
 
 
 @respx.mock
 async def test_detect_sensitive_data_reports_clean_text():
-    respx.post(DETECT_URL).mock(return_value=httpx.Response(200, json={"detectedEntities": []}))
+    respx.post(DETECT_URL).mock(return_value=httpx.Response(200, json=DETECT_CLEAN_RESPONSE))
     result = await detect_sensitive_data("the weather is fine")
     assert result["has_sensitive_data"] is False
     assert result["detections"] == []
@@ -146,7 +169,7 @@ async def test_detect_file_uses_generic_for_images(tmp_path):
     target = tmp_path / "licence.png"
     target.write_bytes(b"\x89PNG\r\n\x1a\n fake image bytes")
     route = respx.post(DETECT_URL).mock(
-        return_value=httpx.Response(200, json={"detectedEntities": []})
+        return_value=httpx.Response(200, json=DETECT_CLEAN_RESPONSE)
     )
 
     await detect_file(str(target))
@@ -255,16 +278,27 @@ async def test_missing_detected_entities_is_an_error_not_a_clean_scan():
 @respx.mock
 async def test_null_detected_entities_is_an_error():
     respx.post(DETECT_URL).mock(return_value=httpx.Response(200, json={"detectedEntities": None}))
-    with pytest.raises(StracError, match="rather than a list"):
+    with pytest.raises(StracError, match="expected a list or a mapping"):
         await detect_sensitive_data(SSN_TEXT)
 
 
 @respx.mock
-async def test_detected_entities_wrong_shape_is_an_error():
+async def test_detected_entities_scalar_is_an_error():
     respx.post(DETECT_URL).mock(
-        return_value=httpx.Response(200, json={"detectedEntities": {"type": "EMAIL"}})
+        return_value=httpx.Response(200, json={"containsPii": True, "detectedEntities": "EMAIL"})
     )
-    with pytest.raises(StracError, match="rather than a list"):
+    with pytest.raises(StracError, match="expected a list or a mapping"):
+        await detect_sensitive_data(SSN_TEXT)
+
+
+@respx.mock
+async def test_detect_mapping_with_non_list_values_is_an_error():
+    respx.post(DETECT_URL).mock(
+        return_value=httpx.Response(
+            200, json={"containsPii": True, "detectedEntities": {"EMAIL": "a@b.c"}}
+        )
+    )
+    with pytest.raises(StracError, match="rather than a list of values"):
         await detect_sensitive_data(SSN_TEXT)
 
 
@@ -291,7 +325,7 @@ async def test_detection_without_a_type_is_not_silently_dropped():
 @respx.mock
 async def test_explicit_empty_list_is_still_a_valid_clean_scan():
     """Fail-closed must not turn a genuine clean result into an error."""
-    respx.post(DETECT_URL).mock(return_value=httpx.Response(200, json={"detectedEntities": []}))
+    respx.post(DETECT_URL).mock(return_value=httpx.Response(200, json=DETECT_CLEAN_RESPONSE))
     result = await detect_sensitive_data("the weather is fine")
     assert result["has_sensitive_data"] is False
     assert result["detections"] == []
@@ -302,7 +336,7 @@ async def test_redact_text_also_fails_closed():
     respx.post(REDACT_URL).mock(
         return_value=httpx.Response(200, json={"redactedContent": "masked"})
     )
-    with pytest.raises(StracError, match="not a verified clean scan"):
+    with pytest.raises(StracError, match="redacted the text but reported no detections"):
         await redact_text(SSN_TEXT)
 
 
@@ -328,7 +362,7 @@ async def test_utf8_config_files_use_the_text_path(tmp_path, filename):
     target = tmp_path / filename
     target.write_text('{"aws_secret_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"}')
     route = respx.post(DETECT_URL).mock(
-        return_value=httpx.Response(200, json={"detectedEntities": []})
+        return_value=httpx.Response(200, json=DETECT_CLEAN_RESPONSE)
     )
 
     await detect_file(str(target))
@@ -343,7 +377,7 @@ async def test_real_binary_still_uses_the_generic_path(tmp_path):
     target = tmp_path / "scan.png"
     target.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR binary bytes")
     route = respx.post(DETECT_URL).mock(
-        return_value=httpx.Response(200, json={"detectedEntities": []})
+        return_value=httpx.Response(200, json=DETECT_CLEAN_RESPONSE)
     )
 
     await detect_file(str(target))
@@ -356,7 +390,7 @@ async def test_undecodable_bytes_use_the_generic_path(tmp_path):
     target = tmp_path / "mystery.dat"
     target.write_bytes(b"\xff\xfe\xfd\xfc not valid utf-8")
     route = respx.post(DETECT_URL).mock(
-        return_value=httpx.Response(200, json={"detectedEntities": []})
+        return_value=httpx.Response(200, json=DETECT_CLEAN_RESPONSE)
     )
 
     await detect_file(str(target))
@@ -369,7 +403,7 @@ async def test_pdf_uses_the_generic_path_even_though_it_may_decode(tmp_path):
     target = tmp_path / "w2.pdf"
     target.write_bytes(b"%PDF-1.4 mostly ascii header")
     route = respx.post(DETECT_URL).mock(
-        return_value=httpx.Response(200, json={"detectedEntities": []})
+        return_value=httpx.Response(200, json=DETECT_CLEAN_RESPONSE)
     )
 
     await detect_file(str(target))
@@ -392,3 +426,134 @@ async def test_redact_file_classifies_by_content_too(tmp_path):
     await redact_file(str(target))
 
     assert json.loads(route.calls.last.request.content)["document_type"] == "text"
+
+
+# --- Behaviour pinned against the live API's real responses ------------------
+
+
+@respx.mock
+async def test_duplicate_zero_span_detections_are_collapsed():
+    """The live /redact returns each match twice; counting both doubles the total."""
+    respx.post(REDACT_URL).mock(return_value=httpx.Response(200, json=REDACT_RESPONSE))
+    result = await redact_text(SSN_TEXT)
+    assert result["detection_count"] == 1, "the zero-span duplicate must not be counted"
+    assert result["detections"][0]["begin_index"] == 33
+
+
+@respx.mock
+async def test_zero_span_detection_is_kept_when_nothing_else_reports_it():
+    """Dedupe must never lose a finding that only appears with a zero span."""
+    respx.post(REDACT_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "redacted_content": "[REDACTED] and [REDACTED]",
+                "detected_entities": [
+                    {"type": "EMAIL", "text": "only@zero.span", "begin_index": 0, "end_index": 0},
+                    {
+                        "type": "TAX_ID_NUMBER",
+                        "text": "123-45-6789",
+                        "begin_index": 15,
+                        "end_index": 26,
+                    },
+                ],
+            },
+        )
+    )
+    result = await redact_text(SSN_TEXT)
+    assert result["detection_count"] == 2
+    assert result["data_element_types"] == ["EMAIL", "TAX_ID_NUMBER"]
+
+
+@respx.mock
+async def test_documented_camelcase_shape_still_works():
+    """Forward compatibility for if the API is brought in line with its spec."""
+    respx.post(REDACT_URL).mock(
+        return_value=httpx.Response(200, json=REDACT_RESPONSE_AS_DOCUMENTED)
+    )
+    result = await redact_text(SSN_TEXT)
+    assert result["redacted_text"] == "Please onboard the user with SSN [REDACTED]"
+    assert result["detection_count"] == 1
+
+
+@respx.mock
+async def test_redact_clean_text_with_no_entities_key_is_a_clean_scan():
+    """/redact omits detections entirely when nothing is found."""
+    respx.post(REDACT_URL).mock(return_value=httpx.Response(200, json=REDACT_CLEAN_RESPONSE))
+    result = await redact_text("nothing to see here")
+    assert result["redacted_text"] == "nothing to see here"
+    assert result["detection_count"] == 0
+
+
+@respx.mock
+async def test_detect_surfaces_both_type_vocabularies():
+    """piiElementTypes and the detection keys use different names for the same element."""
+    respx.post(DETECT_URL).mock(return_value=httpx.Response(200, json=DETECT_RESPONSE))
+    result = await detect_sensitive_data(SSN_TEXT)
+    assert result["data_element_types"] == ["EMAIL", "SOCIAL_SECURITY_NUMBER"]
+    assert result["reported_element_types"] == ["CREDIT_DEBIT_NUMBER", "SSN"]
+
+
+@respx.mock
+async def test_contains_pii_true_with_no_detections_is_an_error():
+    respx.post(DETECT_URL).mock(
+        return_value=httpx.Response(200, json={"containsPii": True, "piiElementTypes": ["SSN"]})
+    )
+    with pytest.raises(StracError, match="reported sensitive data .* but returned no"):
+        await detect_sensitive_data(SSN_TEXT)
+
+
+@respx.mock
+async def test_contains_pii_false_with_detections_is_an_error():
+    respx.post(DETECT_URL).mock(
+        return_value=httpx.Response(
+            200, json={"containsPii": False, "detectedEntities": {"EMAIL": ["a@b.c"]}}
+        )
+    )
+    with pytest.raises(StracError, match="refusing to guess which is correct"):
+        await detect_sensitive_data(SSN_TEXT)
+
+
+@respx.mock
+async def test_redact_file_uses_inline_content_when_returned(tmp_path):
+    """Live /redact returns text redactions inline; the download endpoint 404s."""
+    target = tmp_path / "config.json"
+    target.write_text('{"ssn": "123-45-6789"}')
+    respx.post(DOCUMENTS_URL).mock(return_value=httpx.Response(200, json={"id": "doc_i"}))
+    respx.post(REDACT_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "redactedContent": '{"ssn": "[REDACTED]"}',
+                "containsPii": True,
+                "detectedEntities": {"SOCIAL_SECURITY_NUMBER": ["123-45-6789"]},
+            },
+        )
+    )
+    download = respx.get(f"{TEST_API_BASE}/redacted-documents/doc_i")
+
+    result = await redact_file(str(target))
+
+    assert not download.called, "must not hit the download endpoint when content is inline"
+    written = tmp_path / "config.redacted.json"
+    assert written.read_text() == '{"ssn": "[REDACTED]"}'
+    assert result["redacted_file"] == str(written)
+
+
+@respx.mock
+async def test_error_body_with_success_status_is_treated_as_failure():
+    """The API can return HTTP 200 with {"exceptionType": "InternalServerError"}."""
+    respx.post(REDACT_URL).mock(
+        return_value=httpx.Response(200, json={"exceptionType": "InternalServerError"})
+    )
+    with pytest.raises(StracAPIError, match="exceptionType"):
+        await redact_text(SSN_TEXT)
+
+
+@respx.mock
+async def test_error_code_body_with_success_status_is_treated_as_failure():
+    respx.post(DETECT_URL).mock(
+        return_value=httpx.Response(200, json={"error_code": "InvalidDocumentId"})
+    )
+    with pytest.raises(StracAPIError, match="error_code"):
+        await detect_sensitive_data(SSN_TEXT)

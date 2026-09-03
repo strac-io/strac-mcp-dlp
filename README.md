@@ -164,7 +164,7 @@ Every element named individually: **[Strac Catalog of Sensitive Data Elements](h
 
 Detection runs on text and, via OCR, on PDFs, JPEGs, PNGs, DOCX, XLSX, screenshots and `.msg` email files — which is what `detect_file` and `redact_file` reach.
 
-One caveat worth setting expectations on: the `type` values *these MCP tools* return come from Strac's text and document endpoints, and the [API reference](https://docs.strac.io) documents that set as `NAME`, `ADDRESS`, `EMAIL`, `DATE_OF_BIRTH`, `GENDER`, `TAX_ID_NUMBER`, `CREDIT_DEBIT_NUMBER`, `DRIVER_LICENSE_NUMBER`, `PASSPORT_NUMBER`, `NATIONAL_ID_NUMBER`, `AADHAAR_NUMBER`, `ISSUE_DATE` and `EXPIRY_DATE`. The full catalog above is what runs across your connected apps, where policies, remediation and audit live.
+One caveat worth setting expectations on: the `type` values *these MCP tools* return depend on which endpoint answered, and the two use different vocabularies for the same element. A US Social Security Number comes back as `TAX_ID_NUMBER` from `redact_text` and as `SOCIAL_SECURITY_NUMBER` from `detect_sensitive_data` — which additionally reports `SSN` under `reported_element_types`. Both vocabularies are surfaced as returned rather than normalised, so nothing is invented on your behalf. Which elements are detected at all depends on what is enabled for your account; the full catalog above is what runs across your connected apps, where policies, remediation and audit live.
 
 ---
 
