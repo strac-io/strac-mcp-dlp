@@ -1,0 +1,26 @@
+# Secret scanning rules for this repo. Run in CI over the full history.
+# GitHub's own secret scanning does not know Strac's key format, so it is
+# defined explicitly here.
+title = "strac-mcp-dlp"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "strac-api-key"
+description = "Strac API key (sk_test_ / sk_live_)"
+# Real keys carry ~40 characters after the prefix. The documentation
+# placeholders are far shorter and contain underscores, so they do not match.
+regex = '''sk_(test|live)_[A-Za-z0-9]{20,}'''
+keywords = ["sk_test_", "sk_live_"]
+
+[rules.allowlist]
+regexes = [
+  '''sk_live_your_key_here''',
+  '''sk_test_unit_testing_key''',
+  '''sk_(test|live)_abc''',
+]
+
+[allowlist]
+description = "Documentation placeholders and example config"
+paths = ['''\.gitleaks\.toml$''']

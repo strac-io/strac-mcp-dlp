@@ -9,3 +9,12 @@ build/
 .ruff_cache/
 .env
 .DS_Store
+
+# Never let credentials near the repo
+*.key
+*.pem
+.env
+.env.*
+.strac/
+secrets.*
+**/test-key

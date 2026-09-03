@@ -45,3 +45,18 @@ jobs:
               sys.exit(f"README.md must contain 'mcp-name: {name}' for registry validation")
           print(f"server.json and pyproject.toml agree on {project_version}")
           PY
+
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history, not just the tip commit
+      - name: Install gitleaks
+        run: |
+          curl -sL "https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz" \
+            | tar xz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+      - name: Scan the full history for secrets
+        run: gitleaks detect --source . --config .gitleaks.toml --redact --verbose
