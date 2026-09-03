@@ -239,3 +239,156 @@ def test_strac_errors_reach_the_model():
 
     assert issubclass(StracError, ToolError)
     assert issubclass(StracAPIError, ToolError)
+
+
+# --- #3: fail closed on malformed API responses -----------------------------
+
+
+@respx.mock
+async def test_missing_detected_entities_is_an_error_not_a_clean_scan():
+    """A response we cannot parse must never look like 'no sensitive data found'."""
+    respx.post(DETECT_URL).mock(return_value=httpx.Response(200, json={"unexpected": 1}))
+    with pytest.raises(StracError, match="not a verified clean scan"):
+        await detect_sensitive_data(SSN_TEXT)
+
+
+@respx.mock
+async def test_null_detected_entities_is_an_error():
+    respx.post(DETECT_URL).mock(return_value=httpx.Response(200, json={"detectedEntities": None}))
+    with pytest.raises(StracError, match="rather than a list"):
+        await detect_sensitive_data(SSN_TEXT)
+
+
+@respx.mock
+async def test_detected_entities_wrong_shape_is_an_error():
+    respx.post(DETECT_URL).mock(
+        return_value=httpx.Response(200, json={"detectedEntities": {"type": "EMAIL"}})
+    )
+    with pytest.raises(StracError, match="rather than a list"):
+        await detect_sensitive_data(SSN_TEXT)
+
+
+@respx.mock
+async def test_malformed_detection_entry_is_not_silently_dropped():
+    respx.post(DETECT_URL).mock(
+        return_value=httpx.Response(
+            200, json={"detectedEntities": [{"type": "EMAIL", "text": "a@b.c"}, "garbage"]}
+        )
+    )
+    with pytest.raises(StracError, match="malformed detection at index 1"):
+        await detect_sensitive_data(SSN_TEXT)
+
+
+@respx.mock
+async def test_detection_without_a_type_is_not_silently_dropped():
+    respx.post(DETECT_URL).mock(
+        return_value=httpx.Response(200, json={"detectedEntities": [{"text": "a@b.c"}]})
+    )
+    with pytest.raises(StracError, match="no data element type"):
+        await detect_sensitive_data(SSN_TEXT)
+
+
+@respx.mock
+async def test_explicit_empty_list_is_still_a_valid_clean_scan():
+    """Fail-closed must not turn a genuine clean result into an error."""
+    respx.post(DETECT_URL).mock(return_value=httpx.Response(200, json={"detectedEntities": []}))
+    result = await detect_sensitive_data("the weather is fine")
+    assert result["has_sensitive_data"] is False
+    assert result["detections"] == []
+
+
+@respx.mock
+async def test_redact_text_also_fails_closed():
+    respx.post(REDACT_URL).mock(
+        return_value=httpx.Response(200, json={"redactedContent": "masked"})
+    )
+    with pytest.raises(StracError, match="not a verified clean scan"):
+        await redact_text(SSN_TEXT)
+
+
+# --- #6: classify UTF-8 text correctly regardless of MIME guess -------------
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "config.json",
+        "creds.yaml",
+        "app.yml",
+        ".env",
+        "id_rsa",
+        "secrets.toml",
+        "Dockerfile",
+        "data.xml",
+    ],
+)
+@respx.mock
+async def test_utf8_config_files_use_the_text_path(tmp_path, filename):
+    """These all guess as application/* and used to be sent down the OCR path."""
+    target = tmp_path / filename
+    target.write_text('{"aws_secret_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"}')
+    route = respx.post(DETECT_URL).mock(
+        return_value=httpx.Response(200, json={"detectedEntities": []})
+    )
+
+    await detect_file(str(target))
+
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["document_type"] == "text", f"{filename} should take the text path"
+    assert sent["document_content"].startswith("data:text/plain;base64,")
+
+
+@respx.mock
+async def test_real_binary_still_uses_the_generic_path(tmp_path):
+    target = tmp_path / "scan.png"
+    target.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR binary bytes")
+    route = respx.post(DETECT_URL).mock(
+        return_value=httpx.Response(200, json={"detectedEntities": []})
+    )
+
+    await detect_file(str(target))
+
+    assert json.loads(route.calls.last.request.content)["document_type"] == "generic"
+
+
+@respx.mock
+async def test_undecodable_bytes_use_the_generic_path(tmp_path):
+    target = tmp_path / "mystery.dat"
+    target.write_bytes(b"\xff\xfe\xfd\xfc not valid utf-8")
+    route = respx.post(DETECT_URL).mock(
+        return_value=httpx.Response(200, json={"detectedEntities": []})
+    )
+
+    await detect_file(str(target))
+
+    assert json.loads(route.calls.last.request.content)["document_type"] == "generic"
+
+
+@respx.mock
+async def test_pdf_uses_the_generic_path_even_though_it_may_decode(tmp_path):
+    target = tmp_path / "w2.pdf"
+    target.write_bytes(b"%PDF-1.4 mostly ascii header")
+    route = respx.post(DETECT_URL).mock(
+        return_value=httpx.Response(200, json={"detectedEntities": []})
+    )
+
+    await detect_file(str(target))
+
+    assert json.loads(route.calls.last.request.content)["document_type"] == "generic"
+
+
+@respx.mock
+async def test_redact_file_classifies_by_content_too(tmp_path):
+    target = tmp_path / "config.json"
+    target.write_text('{"password": "hunter2"}')
+    respx.post(DOCUMENTS_URL).mock(return_value=httpx.Response(200, json={"id": "doc_j"}))
+    route = respx.post(REDACT_URL).mock(
+        return_value=httpx.Response(200, json={"status": "completed"})
+    )
+    respx.get(f"{TEST_API_BASE}/redacted-documents/doc_j").mock(
+        return_value=httpx.Response(200, content=b"{}", headers={"content-type": "text/plain"})
+    )
+
+    await redact_file(str(target))
+
+    assert json.loads(route.calls.last.request.content)["document_type"] == "text"

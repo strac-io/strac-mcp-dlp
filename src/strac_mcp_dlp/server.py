@@ -60,9 +60,48 @@ def reset_client() -> None:
     _client = None
 
 
-def _document_type_for(media_type: str) -> Literal["text", "generic"]:
-    """Strac takes `text` for utf-8 text and `generic` for everything else."""
-    return "text" if media_type.startswith("text/") else "generic"
+# Types that are binary even though some decode as UTF-8 by accident. SVG is XML
+# but Strac treats it as an image, and OOXML/PDF are containers.
+BINARY_MEDIA_PREFIXES = ("image/", "audio/", "video/")
+BINARY_MEDIA_TYPES = frozenset(
+    {
+        "application/pdf",
+        "application/zip",
+        "application/msword",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.ms-outlook",
+    }
+)
+
+# How much of a file to inspect for NUL bytes before deciding it is binary.
+BINARY_SNIFF_BYTES = 8192
+
+
+def _classify_document(content: bytes, media_type: str) -> tuple[Literal["text", "generic"], str]:
+    """Decide whether Strac should treat this as `text` or `generic` (its image path).
+
+    The filename's MIME type alone is not enough. `mimetypes` reports .json as
+    application/json, .yaml as application/yaml, and .env, .toml, id_rsa and
+    Dockerfile as application/octet-stream — so trusting it sends exactly the
+    files most likely to hold credentials down the OCR path instead of the text
+    path, and detection suffers. Sniff the bytes instead.
+
+    Returns the document type and the media type to send with the content.
+    """
+    if media_type.startswith(BINARY_MEDIA_PREFIXES) or media_type in BINARY_MEDIA_TYPES:
+        return "generic", media_type
+    if b"\x00" in content[:BINARY_SNIFF_BYTES]:
+        return "generic", media_type
+    try:
+        content.decode("utf-8")
+    except UnicodeDecodeError:
+        return "generic", media_type
+    # Strac documents `text` as "all utf-8 encoded text files"; text/plain is the
+    # unambiguous way to hand it one, whatever the extension implied.
+    return "text", "text/plain"
 
 
 def _resolve_file(path: str) -> tuple[Path, bytes, str]:
@@ -77,13 +116,42 @@ def _resolve_file(path: str) -> tuple[Path, bytes, str]:
     return resolved, resolved.read_bytes(), media_type
 
 
-def _format_detections(raw: Any, include_matched_text: bool) -> list[dict[str, Any]]:
-    """Normalise `detectedEntities` into a stable shape, redacting matches by default."""
+def _format_detections(
+    payload: dict[str, Any], include_matched_text: bool, *, source: str
+) -> list[dict[str, Any]]:
+    """Normalise `detectedEntities` into a stable shape, redacting matches by default.
+
+    Fails closed. An absent or malformed `detectedEntities` is an error, never an
+    empty result: for a DLP tool, silently reporting "nothing sensitive found"
+    because a response could not be parsed is the one failure that lets sensitive
+    data through. An explicitly empty list is a legitimate clean scan.
+    """
+    if "detectedEntities" not in payload:
+        raise StracError(
+            f"Strac API response for {source} contained no `detectedEntities` field, "
+            f"so this is not a verified clean scan. Keys returned: {sorted(payload)}"
+        )
+    raw = payload["detectedEntities"]
+    if not isinstance(raw, list):
+        raise StracError(
+            f"Strac API returned `detectedEntities` as {type(raw).__name__} rather than "
+            f"a list for {source}; refusing to report a clean scan."
+        )
+
     detections: list[dict[str, Any]] = []
-    for entity in raw or []:
+    for position, entity in enumerate(raw):
         if not isinstance(entity, dict):
-            continue
-        detection: dict[str, Any] = {"type": entity.get("type")}
+            raise StracError(
+                f"Strac API returned a malformed detection at index {position} for "
+                f"{source} ({type(entity).__name__}); refusing to drop it silently."
+            )
+        element_type = entity.get("type")
+        if not isinstance(element_type, str) or not element_type:
+            raise StracError(
+                f"Strac API returned a detection with no data element type at index "
+                f"{position} for {source}; refusing to drop it silently."
+            )
+        detection: dict[str, Any] = {"type": element_type}
         begin = entity.get("begin_index")
         end = entity.get("end_index")
         if begin is not None:
@@ -142,7 +210,7 @@ async def redact_text(
     if not text:
         raise StracError("`text` is empty — nothing to redact.")
     payload = await get_client().redact_text(text, redact_field_mode)
-    detections = _format_detections(payload.get("detectedEntities"), include_matched_text)
+    detections = _format_detections(payload, include_matched_text, source="redact_text")
     return {
         "redacted_text": _redacted_content(payload),
         "redact_field_mode": redact_field_mode,
@@ -176,7 +244,7 @@ async def detect_sensitive_data(
     if not text:
         raise StracError("`text` is empty — nothing to detect.")
     payload = await get_client().detect_content(text.encode("utf-8"), "text/plain", "text")
-    detections = _format_detections(payload.get("detectedEntities"), include_matched_text)
+    detections = _format_detections(payload, include_matched_text, source="detect_sensitive_data")
     return {
         "has_sensitive_data": bool(detections),
         "detection_count": len(detections),
@@ -209,18 +277,20 @@ async def detect_file(
             Off by default.
     """
     resolved, content, media_type = _resolve_file(path)
-    document_type = _document_type_for(media_type)
+    document_type, upload_media_type = _classify_document(content, media_type)
     client = get_client()
 
     if len(content) <= MAX_INLINE_CONTENT_BYTES:
         stored_document_id = None
-        payload = await client.detect_content(content, media_type, document_type)
+        payload = await client.detect_content(content, upload_media_type, document_type)
     else:
-        uploaded = await client.upload_document(content, resolved.name, media_type)
+        uploaded = await client.upload_document(content, resolved.name, upload_media_type)
         stored_document_id = uploaded.get("id")
         payload = await client.detect_document(stored_document_id, document_type)
 
-    detections = _format_detections(payload.get("detectedEntities"), include_matched_text)
+    detections = _format_detections(
+        payload, include_matched_text, source=f"detect_file({resolved.name})"
+    )
     return {
         "file": str(resolved),
         "media_type": media_type,
@@ -257,10 +327,10 @@ async def redact_file(
             name with a `.redacted` suffix, next to the original.
     """
     resolved, content, media_type = _resolve_file(path)
-    document_type = _document_type_for(media_type)
+    document_type, upload_media_type = _classify_document(content, media_type)
     client = get_client()
 
-    uploaded = await client.upload_document(content, resolved.name, media_type)
+    uploaded = await client.upload_document(content, resolved.name, upload_media_type)
     document_id = uploaded.get("id")
     if not document_id:
         raise StracError(f"Strac did not return a document id for {resolved.name}: {uploaded}")
