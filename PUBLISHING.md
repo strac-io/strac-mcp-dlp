@@ -6,13 +6,23 @@ official registry, so that is the step that produces discovery.
 
 ## One-time setup
 
-1. **PyPI project + trusted publishing.** Create the `strac-mcp-dlp` project on
-   PyPI, then add a trusted publisher at
-   `https://pypi.org/manage/project/strac-mcp-dlp/settings/publishing/`:
-   - Owner `strac-io`, repository `strac-mcp-dlp`
-   - Workflow `publish.yml`, environment `pypi`
+1. **PyPI trusted publishing.** The project does not exist on PyPI yet, so use the
+   *pending publisher* flow — add it at
+   <https://pypi.org/manage/account/publishing/> (account level).
+   The per-project page `pypi.org/manage/project/.../settings/publishing/` only
+   exists after a first upload, so it will 404 today.
 
-   After this the release workflow needs no API token.
+   | Field | Value |
+   | --- | --- |
+   | PyPI project name | `strac-mcp-dlp` |
+   | Owner | `strac-io` |
+   | Repository name | `strac-mcp-dlp` |
+   | Workflow name | `publish.yml` |
+   | Environment name | `pypi` |
+
+   PyPI requires 2FA on the account before you can add a publisher. Once the
+   pending publisher is saved, the release workflow needs no API token — the
+   first successful run creates the project and converts it to a normal publisher.
 
 2. **GitHub environment.** Create an environment named `pypi` in the repo
    settings. Add required reviewers if you want a human gate on releases.

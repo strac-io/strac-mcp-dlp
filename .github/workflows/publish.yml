@@ -19,9 +19,9 @@ jobs:
           python-version: "3.12"
       - run: pip install build
       - run: python -m build
-      # Trusted publishing — no token needed once this repo and workflow are
-      # registered as a publisher at
-      # https://pypi.org/manage/project/strac-mcp-dlp/settings/publishing/
+      # Trusted publishing — no token needed. Before the first release, register
+      # a pending publisher at https://pypi.org/manage/account/publishing/
+      # (the per-project settings page only exists after a first upload).
       - uses: pypa/gh-action-pypi-publish@release/v1
 
   registry:
