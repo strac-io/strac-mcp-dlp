@@ -110,7 +110,7 @@ See [`examples/`](examples/) for ready-to-copy config files.
 | Tool | What it does | Example |
 | --- | --- | --- |
 | `redact_text` | Redacts PII/PHI/PCI out of a block of text and returns the sanitised string plus what was found. | `redact_text(text="SSN 123-45-6789")` → `"SSN [REDACTED]"` |
-| `detect_pii` | Scans text and reports which sensitive data types are present, without changing it. | `detect_pii(text="call me at jane@acme.com")` → `EMAIL` |
+| `detect_sensitive_data` | Scans text and reports which sensitive data types are present, without changing it. | `detect_sensitive_data(text="call me at jane@acme.com")` → `EMAIL` |
 | `detect_file` | Scans a local file — image, PDF, scan or text — using Strac's OCR and classifiers. | `detect_file(path="./w2.pdf")` → `TAX_ID_NUMBER, NAME, ADDRESS` |
 | `redact_file` | Writes a redacted copy of a local file to disk. The original is never modified. | `redact_file(path="./w2.pdf")` → `./w2.redacted.pdf` |
 | `detokenize` | Resolves Strac vault tokens (`tkn_…`) back to their original values, for authorised callers. | `detokenize(token_ids=["tkn_abc"])` → `"111-22-3333"` |

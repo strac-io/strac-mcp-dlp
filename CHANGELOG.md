@@ -5,7 +5,7 @@
 First release.
 
 - MCP server over stdio (and streamable-http via `--transport`) wrapping the Strac DLP API.
-- Tools: `redact_text`, `detect_pii`, `detect_file`, `redact_file`, `detokenize`.
+- Tools: `redact_text`, `detect_sensitive_data`, `detect_file`, `redact_file`, `detokenize`.
 - Detections omit the matched values by default, so redacting text does not return
   the same sensitive data to the model. Opt in with `include_matched_text`.
 - API base URL is inferred from the key prefix (`sk_test_` → sandbox, `sk_live_` →

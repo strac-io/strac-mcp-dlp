@@ -23,7 +23,7 @@ Strac DLP finds and redacts sensitive data — PII, PHI, PCI and secrets — in 
 and documents, by calling the Strac API.
 
 Use `redact_text` before passing user- or tool-supplied text into a prompt, a log,
-a ticket or a downstream system. Use `detect_pii` when you only need to know
+a ticket or a downstream system. Use `detect_sensitive_data` when you only need to know
 whether sensitive data is present. Use `detect_file` / `redact_file` for images,
 PDFs and other documents on disk.
 
@@ -155,12 +155,14 @@ async def redact_text(
 @server.tool(
     title="Detect sensitive data in text",
     description=(
-        "Detect PII, PHI, PCI and secrets in text without changing it. Returns the "
-        "data element types Strac found. Use this to decide whether text is safe to "
-        "send onward; use redact_text when you need the sanitised text itself."
+        "Detect sensitive data in text without changing it — personal data (PII), "
+        "health data (PHI), payment and card data (PCI), and credentials such as API "
+        "keys, cloud access keys, tokens and connection strings. Returns the data "
+        "element types Strac found. Use this to decide whether text is safe to send "
+        "onward; use redact_text when you need the sanitised text itself."
     ),
 )
-async def detect_pii(
+async def detect_sensitive_data(
     text: str,
     include_matched_text: bool = False,
 ) -> dict[str, Any]:

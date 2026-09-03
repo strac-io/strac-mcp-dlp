@@ -9,7 +9,7 @@ from strac_mcp_dlp.config import TEST_API_BASE
 from strac_mcp_dlp.errors import StracAPIError, StracError
 from strac_mcp_dlp.server import (
     detect_file,
-    detect_pii,
+    detect_sensitive_data,
     detokenize,
     redact_file,
     redact_text,
@@ -93,10 +93,10 @@ async def test_redact_text_passes_field_mode():
 
 
 @respx.mock
-async def test_detect_pii_sends_text_as_data_url():
+async def test_detect_sensitive_data_sends_text_as_data_url():
     route = respx.post(DETECT_URL).mock(return_value=httpx.Response(200, json=DETECT_RESPONSE))
 
-    result = await detect_pii(SSN_TEXT)
+    result = await detect_sensitive_data(SSN_TEXT)
 
     sent = json.loads(route.calls.last.request.content)
     assert sent["document_type"] == "text"
@@ -111,9 +111,9 @@ async def test_detect_pii_sends_text_as_data_url():
 
 
 @respx.mock
-async def test_detect_pii_reports_clean_text():
+async def test_detect_sensitive_data_reports_clean_text():
     respx.post(DETECT_URL).mock(return_value=httpx.Response(200, json={"detectedEntities": []}))
-    result = await detect_pii("the weather is fine")
+    result = await detect_sensitive_data("the weather is fine")
     assert result["has_sensitive_data"] is False
     assert result["detections"] == []
 
@@ -122,7 +122,7 @@ async def test_empty_text_is_rejected_without_calling_the_api():
     with pytest.raises(StracError, match="nothing to redact"):
         await redact_text("")
     with pytest.raises(StracError, match="nothing to detect"):
-        await detect_pii("")
+        await detect_sensitive_data("")
 
 
 @respx.mock
