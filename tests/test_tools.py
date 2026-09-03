@@ -557,3 +557,88 @@ async def test_error_code_body_with_success_status_is_treated_as_failure():
     )
     with pytest.raises(StracAPIError, match="error_code"):
         await detect_sensitive_data(SSN_TEXT)
+
+
+# --- redact_file must never destroy data ------------------------------------
+
+
+def _mock_redaction(content: str = '{"ssn": "[REDACTED]"}') -> None:
+    respx.post(DOCUMENTS_URL).mock(return_value=httpx.Response(200, json={"id": "doc_g"}))
+    respx.post(REDACT_URL).mock(return_value=httpx.Response(200, json={"redactedContent": content}))
+
+
+@respx.mock
+async def test_redact_file_refuses_to_overwrite_its_own_source(tmp_path):
+    target = tmp_path / "secrets.json"
+    target.write_text('{"ssn": "123-45-6789"}')
+    _mock_redaction()
+
+    with pytest.raises(StracError, match="resolves to the source file"):
+        await redact_file(str(target), output_path=str(target))
+
+    assert target.read_text() == '{"ssn": "123-45-6789"}', "source must be untouched"
+
+
+@respx.mock
+async def test_redact_file_refuses_a_symlink_back_to_the_source(tmp_path):
+    target = tmp_path / "secrets.json"
+    target.write_text('{"ssn": "123-45-6789"}')
+    link = tmp_path / "alias.json"
+    link.symlink_to(target)
+    _mock_redaction()
+
+    with pytest.raises(StracError, match="resolves to the source file"):
+        await redact_file(str(target), output_path=str(link))
+
+    assert target.read_text() == '{"ssn": "123-45-6789"}'
+
+
+@respx.mock
+async def test_redact_file_refuses_to_clobber_an_existing_file(tmp_path):
+    target = tmp_path / "secrets.json"
+    target.write_text('{"ssn": "123-45-6789"}')
+    bystander = tmp_path / "important.txt"
+    bystander.write_text("do not lose me")
+    _mock_redaction()
+
+    with pytest.raises(StracError, match="already exists"):
+        await redact_file(str(target), output_path=str(bystander))
+
+    assert bystander.read_text() == "do not lose me"
+
+
+@respx.mock
+async def test_redact_file_overwrites_only_when_asked(tmp_path):
+    target = tmp_path / "secrets.json"
+    target.write_text('{"ssn": "123-45-6789"}')
+    bystander = tmp_path / "old.json"
+    bystander.write_text("stale")
+    _mock_redaction()
+
+    result = await redact_file(str(target), output_path=str(bystander), overwrite=True)
+
+    assert bystander.read_text() == '{"ssn": "[REDACTED]"}'
+    assert result["redacted_file"] == str(bystander)
+
+
+@respx.mock
+async def test_redact_file_refuses_a_directory_destination(tmp_path):
+    target = tmp_path / "secrets.json"
+    target.write_text('{"ssn": "123-45-6789"}')
+    _mock_redaction()
+
+    with pytest.raises(StracError, match="not a regular file"):
+        await redact_file(str(target), output_path=str(tmp_path))
+
+
+@respx.mock
+async def test_bad_destination_is_rejected_before_anything_is_uploaded(tmp_path):
+    """A request that cannot be written must not leave a document in the vault."""
+    target = tmp_path / "secrets.json"
+    target.write_text('{"ssn": "123-45-6789"}')
+    upload = respx.post(DOCUMENTS_URL).mock(return_value=httpx.Response(200, json={"id": "doc_g"}))
+
+    with pytest.raises(StracError, match="resolves to the source file"):
+        await redact_file(str(target), output_path=str(target))
+
+    assert not upload.called, "must fail before uploading to the vault"

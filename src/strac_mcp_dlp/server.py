@@ -118,6 +118,44 @@ def _resolve_file(path: str) -> tuple[Path, bytes, str]:
 
 # The live API and the published OpenAPI spec disagree on these names, and the two
 # endpoints disagree with each other. Accept every spelling seen in either.
+def _resolve_destination(source: Path, output_path: str | None, overwrite: bool) -> Path:
+    """Work out where the redacted copy goes, refusing to destroy anything.
+
+    `output_path` reaches this server from a model, so it is not a trusted value.
+    Left unchecked it can name the source file itself — silently destroying the
+    original this tool promises never to modify — or clobber any other file the
+    process can write.
+    """
+    destination = (
+        Path(output_path).expanduser()
+        if output_path
+        else source.with_suffix(f".redacted{source.suffix}")
+    )
+    if not destination.is_absolute():
+        destination = Path.cwd() / destination
+    destination = destination.resolve()
+    source_resolved = source.resolve()
+
+    # Compare resolved paths, and samefile() as well so a symlink or hard link
+    # pointing back at the source is caught too.
+    if destination == source_resolved or (
+        destination.exists() and destination.samefile(source_resolved)
+    ):
+        raise StracError(
+            f"output_path resolves to the source file ({source_resolved}). redact_file "
+            "never modifies the original — choose a different destination."
+        )
+    if destination.exists():
+        if not destination.is_file():
+            raise StracError(f"output_path exists and is not a regular file: {destination}")
+        if not overwrite:
+            raise StracError(
+                f"{destination} already exists. Pass overwrite=true to replace it, or "
+                "choose a different output_path."
+            )
+    return destination
+
+
 REDACTED_CONTENT_KEYS = ("redacted_content", "redactedContent")
 DETECTED_ENTITY_KEYS = ("detected_entities", "detectedEntities")
 
@@ -418,19 +456,26 @@ async def detect_file(
 async def redact_file(
     path: str,
     output_path: str | None = None,
+    overwrite: bool = False,
 ) -> dict[str, Any]:
-    """Redact the file at `path` and save the result.
+    """Redact the file at `path` and save the result to a new file.
 
-    The file is uploaded to the Strac document vault, redacted there, and the
-    redacted copy downloaded back. The original document stays in the vault so it
-    remains retrievable by authorised users.
+    The file is uploaded to the Strac document vault and redacted there. The
+    original on disk is never modified, and the original document stays in the
+    vault so it remains retrievable by authorised users.
 
     Args:
         path: Path to the file to redact.
         output_path: Where to write the redacted copy. Defaults to the original
-            name with a `.redacted` suffix, next to the original.
+            name with a `.redacted` suffix, next to the original. Pointing this at
+            the source file is refused.
+        overwrite: Allow replacing an existing file at the destination. Off by
+            default, so a redaction cannot quietly destroy unrelated data.
     """
     resolved, content, media_type = _resolve_file(path)
+    # Settle the destination before uploading, so an unwritable request does not
+    # leave a document sitting in the vault.
+    destination = _resolve_destination(resolved, output_path, overwrite)
     document_type, upload_media_type = _classify_document(content, media_type)
     client = get_client()
 
@@ -463,13 +508,6 @@ async def redact_file(
                 f"{sorted(result)}. Underlying error: {exc}"
             ) from exc
 
-    destination = (
-        Path(output_path).expanduser()
-        if output_path
-        else resolved.with_suffix(f".redacted{resolved.suffix}")
-    )
-    if not destination.is_absolute():
-        destination = (Path.cwd() / destination).resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_bytes(redacted_bytes)
 
